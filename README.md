@@ -160,7 +160,7 @@ core/agents/recommender.py   추천 에이전트 (판정 · 설명 · 질의응�
 core/ai.py                   AI 연결 (멀티 프로바이더 · 모델 자동 선택)
 core/report.py               PDF 보고서
 data/                        제도 · 사례 · 법령 지식 · 수집 결과
-tests/                       계산 · 판정 · 에이전트 테스트 55개
+tests/                       계산 · 판정 · 에이전트 테스트 59개
 ```
 </details>
 

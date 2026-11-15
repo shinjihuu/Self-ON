@@ -130,6 +130,7 @@ def clean_ai(monkeypatch):
     monkeypatch.setattr(ai, "_WORKING", {})
     monkeypatch.setattr(ai, "_BAD", set())
     monkeypatch.setattr(ai, "_DISABLED", {})
+    monkeypatch.setattr(ai, "_DISABLED_AT", {})
     return monkeypatch
 
 
@@ -294,3 +295,44 @@ def test_ended_expense_fully_removed_even_with_other_savings():
     df = fin.project_cashflow(2026, 11, 3, 379_700, 374_000, [fin.SupportItem("활동지원", "expense", 300_000)],
                               fin.JobAssumption(0, 1_200_000, 150_000, 150_000))
     assert df["job_expense"].iloc[0] == 374_000 - 300_000 + 150_000 - 150_000
+
+
+def test_spouse_earned_income_gets_own_deduction():
+    """배우자 근로소득도 1인당 95만 원 공제 후 70%만 반영 (부부 선정기준 224만 원)."""
+    p = _p(has_spouse=True, spouse_income=1_950_000)
+    ri, _ = bf.recognized_income(p)
+    assert ri == 700_000                                   # (195만 − 95만) × 0.7
+    assert bf.recognized_income(_p(has_spouse=False, spouse_income=1_950_000))[0] == 0   # 배우자 없음 → 무시
+    assert bf.pension_estimate(p).eligible is True
+
+
+def test_won_formatting_edges():
+    assert fin.won(5_700) == "0.6만 원"
+    assert fin.won(-300) == "0만 원" and fin.won(0) == "0만 원"
+    assert fin.won(12_345_678) == "1,235만 원"
+
+
+def test_server_error_does_not_blacklist_model(clean_ai):
+    """5xx 같은 일시 오류는 다음 모델로 넘어가되, 그 모델을 영구 제외하지 않는다."""
+    mp = clean_ai
+    mp.setenv("GEMINI_API_KEY", "g")
+    calls = []
+
+    def fake_call(p, *a, **k):
+        calls.append(p["model"])
+        if p["model"] == "gemini-flash-lite-latest":
+            raise _Err(503, "overloaded")
+        return "답변"
+    mp.setattr(ai, "_call", fake_call)
+    assert ai._chat("q") == "답변"
+    assert ("Gemini", "gemini-flash-lite-latest") not in ai._BAD
+    assert "gemini-flash-lite-latest" in ai.providers()[0]["models"]
+
+
+def test_disabled_service_recovers_after_ttl(clean_ai):
+    mp = clean_ai
+    mp.setenv("GROQ_API_KEY", "g")
+    mp.setattr(ai, "_call", lambda *a, **k: (_ for _ in ()).throw(_Err(401, "bad key")))
+    assert ai._chat("q") is None and ai.providers() == []          # 키 오류 → 잠시 제외
+    ai._DISABLED_AT["Groq"] -= ai.DISABLE_TTL + 1                  # 10분 경과
+    assert [p["name"] for p in ai.providers()] == ["Groq"]          # 다시 시도

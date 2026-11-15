@@ -89,14 +89,16 @@ def _income_by_kind(p: dict) -> tuple[int, int]:
 
 
 def recognized_income(p: dict, earned_override: int | None = None) -> tuple[int, list[str]]:
-    """장애인연금 소득인정액 (본인 기준, 월). 배우자가 있으면 배우자 소득을 '기타소득'으로 입력받는다."""
+    """장애인연금 소득인정액 (본인·배우자, 월). 근로소득 공제는 본인과 배우자에게 각각 적용한다."""
     P = PARAMS_2026["pension"]
     earned, other = _income_by_kind(p)
     if earned_override is not None:
         earned = earned_override
-    other += int(p.get("spouse_income", 0) or 0)
-    earned_eval = max(0, earned - P["earned_income_deduction"]) * (1 - P["earned_income_extra_rate"])
-    income_eval = earned_eval + other
+    ded, rate = P["earned_income_deduction"], 1 - P["earned_income_extra_rate"]
+    earned_eval = max(0, earned - ded) * rate
+    spouse = int(p.get("spouse_income", 0) or 0) if p.get("has_spouse") else 0
+    spouse_eval = max(0, spouse - ded) * rate
+    income_eval = earned_eval + spouse_eval + other
     area = p.get("area_type") or area_type(p.get("region", ""))
     general = max(0, int(p.get("property_general", 0) or 0) - P["basic_property"][area])
     fin = max(0, int(p.get("savings", 0) or 0) - P["financial_deduction"])
@@ -104,7 +106,7 @@ def recognized_income(p: dict, earned_override: int | None = None) -> tuple[int,
     total = int(income_eval + prop)
     steps = [
         f"근로소득 월 {earned:,}원 → 95만 원 공제 후 30% 추가 공제 = {int(earned_eval):,}원",
-        f"기타소득(배우자 포함) {other:,}원",
+        f"배우자 근로소득 월 {spouse:,}원 → 같은 방식으로 공제 = {int(spouse_eval):,}원 · 기타소득 {other:,}원",
         f"재산 환산: (일반재산 공제 후 {general:,}원 + 금융재산 2,000만 원 공제 후 {fin:,}원 − 부채) × 연 4% ÷ 12 = {int(prop):,}원",
         f"소득인정액 = {total:,}원",
     ]

@@ -1,4 +1,4 @@
-"""AI 설명 모듈 — OpenAI 키가 있으면 OpenAI, 없으면 Hugging Face 무료 sLLM, 둘 다 없으면 규칙 기반 문장.
+"""AI 설명 모듈 — 키가 있는 서비스(OpenAI → Gemini → Groq → Hugging Face)를 차례로 쓰고, 모두 안 되면 규칙 기반 문장.
 
 AI 역할: 추천 이유·유의사항 설명, 공식 자료 기반 질의응답, 시뮬레이션 결과를 쉬운 말로 풀어주기.
 AI가 하지 않는 일: 자격 판정, 금액 계산, 수급 확정 (모두 Python 규칙/계산이 담당).
@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 
 SYSTEM_PROMPT = """너는 '자립ON'의 AI 길잡이야. 발달장애인과 보호자가 이해하기 쉽게 설명해.
 
@@ -48,7 +49,9 @@ DEFAULT_HF_MODEL = HF_CANDIDATES[0]
 
 _WORKING: dict[str, str] = {}          # 서비스별로 이번 실행에서 성공한 모델
 _BAD: set[tuple[str, str]] = set()     # (서비스, 모델) 지원되지 않는 것으로 확인됨
-_DISABLED: dict[str, str] = {}         # 키·크레딧 문제로 이번 실행에서 건너뛸 서비스 → 이유
+_DISABLED: dict[str, str] = {}         # 키·크레딧 문제로 잠시 건너뛸 서비스 → 이유
+_DISABLED_AT: dict[str, float] = {}    # 서비스를 끈 시각 (일정 시간이 지나면 다시 시도)
+DISABLE_TTL = 600                      # 키 교체·크레딧 충전 후 재시작 없이 복구되도록 10분 뒤 다시 시도
 
 LAST_PROVIDER: str | None = None   # 마지막으로 응답에 성공한 AI
 LAST_ERROR: str | None = None      # 마지막 실패 원인 (진단용, 키는 포함하지 않음)
@@ -71,6 +74,10 @@ def _secret(*names: str, default: str | None = None) -> str | None:
 def providers() -> list[dict]:
     """키가 있는 AI 서비스 목록 (OpenAI → Gemini → Groq → Hugging Face)."""
     out = []
+    now = time.time()
+    for name in [n for n, t in _DISABLED_AT.items() if now - t > DISABLE_TTL]:
+        _DISABLED.pop(name, None)
+        _DISABLED_AT.pop(name, None)
     for cfg in PROVIDERS:
         key = _secret(*cfg["keys"])
         if not key or cfg["name"] in _DISABLED:
@@ -121,8 +128,9 @@ def _call(p: dict, user_prompt: str, max_tokens: int, system: str = SYSTEM_PROMP
 
 def _chat(user_prompt: str, max_tokens: int = 600, system: str = SYSTEM_PROMPT) -> str | None:
     """키가 있는 AI 서비스를 순서대로 시도. 모두 실패하면 None (규칙 기반 문장으로 대체).
-    - 모델 미지원·빈 응답 → 같은 서비스의 다음 후보 모델
-    - 키 오류(401/403)·크레딧 없음(402) → 이번 실행 동안 그 서비스를 건너뜀
+    - 모델 미지원(400·404)·빈 응답 → 그 모델을 후보에서 빼고 다음 모델
+    - 서버 일시 오류(5xx) → 다음 모델을 시도하되 후보에서 빼지 않음
+    - 키 오류(401/403)·크레딧 없음(402) → 10분 동안 그 서비스를 건너뜀
     - 한도 초과(429)·네트워크 오류 → 다음 서비스로 (다음 요청에서 다시 시도)"""
     global LAST_PROVIDER, LAST_ERROR
     for p in providers():
@@ -137,9 +145,12 @@ def _chat(user_prompt: str, max_tokens: int = 600, system: str = SYSTEM_PROMPT) 
                 status = getattr(e, "status_code", None)
                 if status in (401, 402, 403):
                     _DISABLED[p["name"]] = LAST_ERROR
+                    _DISABLED_AT[p["name"]] = time.time()
                     break
                 if status == 429 or any(k in type(e).__name__ for k in ("Connection", "Timeout")):
                     break
+                if status is not None and status >= 500:
+                    continue                      # 일시 오류: 이번에는 다음 모델, 다음 요청에서는 다시 시도
                 _BAD.add((p["name"], m))
     return None
 
@@ -162,6 +173,7 @@ def explain_recommendation(profile: dict, program: dict, rec) -> tuple[str, bool
     prompt = f"""[사용자 정보] {_profile_brief(profile)}
 [공식 자료] {json.dumps({k: program[k] for k in ('name','summary','benefits','requirements','cautions')}, ensure_ascii=False)}
 [규칙 판정] 상태={rec.status}, 충족={rec.reasons}, 추가확인={rec.checks}, 향후={rec.future}
+[2026년 기준 계산] {getattr(rec, "amount_label", "") or "현금 지원 금액 계산 대상 아님"}
 
 이 사람에게 '{program['name']}'을(를) 왜 살펴보면 좋은지(또는 왜 지금은 맞지 않는지) 3~4문장으로 쉽게 설명해 줘.
 마지막 문장은 다음에 할 일 한 가지로 끝내."""
@@ -186,8 +198,11 @@ def _fallback_recommendation(profile: dict, program: dict, rec) -> str:
     else:
         head = f"**{program['name']}**은(는) 지금 입력한 조건과는 맞지 않아요."
     body = ""
-    if rec.reasons:
-        body += " " + ", ".join(rec.reasons) + " 조건이 맞아요."
+    reasons = [x for x in rec.reasons if not x.startswith("2026년 기준 계산")]
+    if reasons:
+        body += " " + ", ".join(reasons) + " 조건이 맞아요."
+    if getattr(rec, "amount", 0):
+        body += f" 2026년 기준으로 월 {rec.amount:,}원 정도로 계산돼요."
     if rec.checks:
         body += " " + rec.checks[0]
     tail = f" 다음 할 일: {program['apply']}."

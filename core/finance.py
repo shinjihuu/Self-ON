@@ -259,6 +259,8 @@ def won(x: float, unit: str = "만원") -> str:
     """금액 표기: 만 원 단위 (예: 1,234만 원)."""
     if unit == "만원":
         v = x / 10_000
+        if round(v, 1) == 0:
+            return "0만 원"
         s = f"{v:,.0f}" if abs(v) >= 100 or float(v).is_integer() else f"{v:,.1f}"
         return f"{s}만 원"
     return f"{x:,.0f}원"

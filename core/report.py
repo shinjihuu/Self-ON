@@ -34,6 +34,8 @@ STATUS_STYLE = {
 
 def won(x: float) -> str:
     v = x / 10_000
+    if round(v, 1) == 0:
+        return "0만 원"
     if abs(v) >= 100 or float(v).is_integer():
         return f"{v:,.0f}만 원"
     return f"{v:,.1f}만 원"
