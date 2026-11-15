@@ -218,6 +218,11 @@ def build_pdf(d: dict) -> bytes:
             for h in cf["horizons"]]
     ws = [W * 0.28] + [W * 0.72 / (len(hdr) - 1)] * (len(hdr) - 1)
     _simple_table(pdf, hdr, rows, ws)
+    if cf["after"] == cf["before"]:
+        pdf.set_font("N", "", 7.2)
+        pdf.set_text_color(*MUTED)
+        pdf.multi_cell(W, 3.4, "이미 받고 있는 지원(예: 장애인연금)은 '지원 전'에 포함되어 있어 차이가 없어요. "
+                               "시뮬레이터에서 새로 적용할 지원이나 돌봄비 절감액을 넣으면 차이가 나타나요.", align="L")
     if cf.get("assumptions"):
         pdf.set_font("N", "", 7)
         pdf.set_text_color(*MUTED)

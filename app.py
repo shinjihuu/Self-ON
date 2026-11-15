@@ -606,9 +606,13 @@ def page_simulator() -> None:
                 elif prog["support_type"] == "care":
                     st.caption("현금 수입으로 계산하지 않아요. " + ("본인부담금은 이미 월 지출에 반영되어 있어요. " if in_use else "")
                                + "이 서비스 덕분에 **직접 내던 돌봄 비용이 줄어드는 경우에만** 입력하세요.")
-                    red = st.number_input("실제로 줄어드는 월 돌봄 비용(원)", 0, 3_000_000, 0, 10000, key=f"sim_red_{pid}")
+                    red_default = int(sd.get("care_savings", {}).get(pid, 0))
+                    red = st.number_input("실제로 줄어드는 월 돌봄 비용(원)", 0, 3_000_000, red_default, 10000, key=f"sim_red_{pid}",
+                                          help=sd.get("care_savings_note") if red_default else None)
                     if red:
                         supports.append(fin.SupportItem(prog["name"], "expense", int(red)))
+                        assumed_names.append(f"{prog['name']} 돌봄비 절감 월 {int(red):,}원")
+                        st.markdown(ui.badge("가정 시나리오 · 실제 절감액으로 바꿔 입력하세요", "assume"), unsafe_allow_html=True)
                 else:
                     if prog["support_type"] == "finance":
                         st.caption("저축 매칭·자산형성 제도는 지원금이 아니에요. ③ 예금·적금 운용에서 금리·저축액 가정으로 비교해요.")

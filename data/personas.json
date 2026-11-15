@@ -65,7 +65,11 @@
         "job_start_month": 9,
         "expected_salary": 1200000,
         "job_extra_expense": 150000,
-        "independent_living_cost": 1500000
+        "independent_living_cost": 1500000,
+        "care_savings": {
+          "day_activity": 300000
+        },
+        "care_savings_note": "주간활동서비스 이용으로 줄어드는 낮 시간 돌봄 비용 (가정값)"
       },
       "household": {
         "base_date": "2026-10-31",
