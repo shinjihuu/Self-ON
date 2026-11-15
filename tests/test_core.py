@@ -277,3 +277,20 @@ def test_afpk_pension_matches_report():
     p = PERSONAS["afpk_daughter"]["profile"]
     e = bf.pension_estimate(p)
     assert e.monthly == 379_700 and abs(e.monthly * 12 - 4_550_000) < 10_000
+
+
+def test_restricted_service_saving_ends_on_job():
+    """주간활동 돌봄비 절감은 '지원 후'에는 유지, 취업 시나리오에서는 취업 시점부터 끝난다."""
+    df = fin.project_cashflow(2026, 11, 12, 379_700, 374_000,
+                              [fin.SupportItem("주간활동", "expense", 300_000)],
+                              fin.JobAssumption(10, 1_200_000, 150_000, 150_000, 0, 300_000))
+    assert df["after_surplus"].iloc[0] == 5_700 + 300_000
+    assert df["job_surplus"].iloc[9] == 305_700
+    assert df["job_surplus"].iloc[10] == 5_700 + 1_200_000      # 절감 종료, 훈련비 종료·교통비 증가 상쇄
+
+
+def test_ended_expense_fully_removed_even_with_other_savings():
+    """돌봄비 절감이 계속되는 경우에도 취업 시 끝나는 훈련비는 온전히 빠진다."""
+    df = fin.project_cashflow(2026, 11, 3, 379_700, 374_000, [fin.SupportItem("활동지원", "expense", 300_000)],
+                              fin.JobAssumption(0, 1_200_000, 150_000, 150_000))
+    assert df["job_expense"].iloc[0] == 374_000 - 300_000 + 150_000 - 150_000

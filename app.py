@@ -657,7 +657,15 @@ def page_simulator() -> None:
                     ui.note(f"⚠️ 취업 후 소득인정액이 월 {ri_after:,}원이 되어 장애인연금이 "
                             f"<b>월 {base_amt:,}원 → {after.monthly:,}원</b>으로 바뀌는 것으로 계산했어요 ({after.label}). "
                             "취업 시나리오에 자동 반영돼요.", "warm")
-            job = fin.JobAssumption(joff, int(sal), int(ext), int(end), change)
+            # 취업·직업훈련 중 이용이 제한되는 서비스(주간활동 등)의 돌봄비 절감은 취업 시나리오에서 끝난다
+            lost = 0
+            for pid_ in selected:
+                if "취업 중" in (PROGRAMS[pid_].get("criteria") or {}).get("employment_restricted", []):
+                    lost += int(st.session_state.get(f"sim_red_{pid_}", 0) or 0)
+            if lost:
+                ui.note(f"🌼 주간활동서비스는 취업 후 이용이 제한될 수 있어, 취업 시나리오에서는 돌봄비 절감(월 {lost:,}원)이 "
+                        "끝나는 것으로 계산해요. 대신 근로지원인 등 고용 서비스를 검토해 보세요.", "lav")
+            job = fin.JobAssumption(joff, int(sal), int(ext), int(end), change, lost)
 
     df = fin.project_cashflow(TODAY.year, TODAY.month, months, p["monthly_income"], p["monthly_expense"], supports, job)
     steady_after = max([s.start_offset for s in supports if s.amount > 0] + [0])
