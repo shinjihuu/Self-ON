@@ -1,11 +1,13 @@
-# 자립ON 🌱 발달장애인 맞춤형 AI 자립설계 길잡이
+# [자립ON](https://self-on.streamlit.app/) 🌱 발달장애인 맞춤형 AI 자립설계 길잡이
 
 발달장애인의 상황을 입력하면 받을 수 있는 지원제도와 2026년 기준 월 지원액을 계산합니다.
 지원을 받았을 때 현금흐름과 자립자금이 어떻게 달라지는지도 함께 시뮬레이션합니다.
 
+서비스 링크: https://self-on.streamlit.app/
+
 AFPK 영 플래너 챌린지 · Streamlit · Python · Gemini
 
-![자립ON 메인 화면](docs/images/01_overview.png)
+[![자립ON 메인 화면](docs/images/01_overview.png)](https://self-on.streamlit.app/)
 
 ## 한눈에 보기
 
